@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reader–Writer Chat System</title>
+  <style>
+    body {
+      background-color: #0a0f1c;
+      color: #f0f3ff;
+      font-family: "Segoe UI", Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 0;
+    }
+    h1 {
+      margin-top: 30px;
+      color: #6ea8fe;
+    }
+    .container {
+      width: 90%;
+      max-width: 800px;
+      background-color: #101726;
+      border-radius: 12px;
+      box-shadow: 0 0 20px rgba(0, 50, 150, 0.4);
+      padding: 20px;
+      margin-top: 30px;
+    }
+    textarea, input, button {
+      font-family: inherit;
+      border-radius: 6px;
+      border: none;
+      outline: none;
+    }
+    button {
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .role-select {
+      margin: 20px 0;
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+    }
+    .role-select button {
+      background-color: #1f2c44;
+      color: #fff;
+      padding: 10px 25px;
+    }
+    .role-select button:hover:not(:disabled) {
+      background-color: #34507a;
+    }
+    .writer-controls, .reader-controls {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 15px;
+    }
+    textarea {
+      width: 100%;
+      height: 120px;
+      background-color: #0e1525;
+      color: #fff;
+      padding: 10px;
+      border: 1px solid #2c3b55;
+      resize: none;
+    }
+    #messages {
+      width: 100%;
+      height: 300px;
+      background-color: #0e1525;
+      border: 1px solid #2c3b55;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      color: #b8c8ff;
+      padding: 10px;
+      border-radius: 6px;
+    }
+    .control-btn {
+      padding: 8px 18px;
+      background-color: #2e4b7a;
+      color: white;
+      border: none;
+    }
+    .control-btn:hover:not(:disabled) {
+      background-color: #3f6cb2;
+    }
+    footer {
+      margin-top: auto;
+      padding: 15px;
+      font-size: 13px;
+      color: #5f708e;
+    }
+  </style>
+</head>
+<body>
+  <h1>Reader–Writer Chat System</h1>
+
+  <div class="container">
+    <div class="role-select">
+      <button id="join-writer">Join as Writer</button>
+      <button id="join-reader">Join as Reader</button>
+    </div>
+
+    <div class="writer-controls">
+      <div>
+        <button id="start-writing" class="control-btn">Start Writing</button>
+        <button id="stop-writing" class="control-btn" disabled>Stop Writing</button>
+      </div>
+      <textarea id="writer-message" placeholder="Enter your message here..."></textarea>
+      <button id="send-message" class="control-btn" disabled>Send Message</button>
+    </div>
+
+    <div class="reader-controls">
+      <button id="fetch-messages" class="control-btn">Fetch Latest Messages</button>
+      <div id="messages">(no messages yet)</div>
+    </div>
+  </div>
+
+  <footer>© Reader–Writer System | Dark Mode Interface</footer>
+
+  <script>
+    const ws = new WebSocket("ws://localhost:8765");
+    let role = null;
+    let isWriting = false;
+
+    const writerControls = document.querySelector(".writer-controls");
+    const readerControls = document.querySelector(".reader-controls");
+    const btnJoinWriter = document.getElementById("join-writer");
+    const btnJoinReader = document.getElementById("join-reader");
+    const btnStart = document.getElementById("start-writing");
+    const btnStop = document.getElementById("stop-writing");
+    const btnSend = document.getElementById("send-message");
+    const writerMessage = document.getElementById("writer-message");
+    const btnFetch = document.getElementById("fetch-messages");
+    const msgBox = document.getElementById("messages");
+
+    ws.onopen = () => {
+      console.log("[WS] Connected to bridge");
+    };
+
+    ws.onmessage = (evt) => {
+      const data = JSON.parse(evt.data);
+      console.log("[WS] Message:", data);
+
+      if (data.type === "broadcast" && data.payload) {
+        const { message, timestamp } = data.payload;
+        msgBox.textContent += `[${timestamp}] ${message}\n`;
+      } else if (data.role === "reader" && data.data) {
+        msgBox.textContent = data.data;
+      } else if (data.role === "writer") {
+        console.log("Writer reply:", data.reply);
+      }
+    };
+
+    ws.onclose = () => {
+      alert("WebSocket connection closed. Refresh to reconnect.");
+    };
+
+    // ---- Join as Writer ----
+    btnJoinWriter.onclick = () => {
+      role = "writer";
+      btnJoinWriter.disabled = true;
+      btnJoinReader.disabled = true;
+      writerControls.style.display = "flex";
+      readerControls.style.display = "none";
+      console.log("Joined as writer");
+    };
+
+    // ---- Join as Reader ----
+    btnJoinReader.onclick = () => {
+      role = "reader";
+      btnJoinWriter.disabled = true;
+      btnJoinReader.disabled = true;
+      writerControls.style.display = "none";
+      readerControls.style.display = "flex";
+      console.log("Joined as reader");
+    };
+
+    // ---- Writer Controls ----
+    btnStart.onclick = () => {
+      ws.send(JSON.stringify({ role: "writer", control: "start" }));
+      isWriting = true;
+      btnStart.disabled = true;
+      btnStop.disabled = false;
+      btnSend.disabled = false;
+    };
+
+    btnStop.onclick = () => {
+      ws.send(JSON.stringify({ role: "writer", control: "stop" }));
+      isWriting = false;
+      btnStart.disabled = false;
+      btnStop.disabled = true;
+      btnSend.disabled = true;
+    };
+
+    btnSend.onclick = () => {
+      const message = writerMessage.value.trim();
+      if (message.length === 0) return;
+      ws.send(JSON.stringify({ role: "writer", message }));
+      writerMessage.value = "";
+    };
+
+    // ---- Reader Controls ----
+    btnFetch.onclick = () => {
+      ws.send(JSON.stringify({ role: "reader" }));
+    };
+  </script>
+</body>
+</html>
