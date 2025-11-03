@@ -1,12 +1,3 @@
-/* server.c — Reader–Writer TCP server (MongoDB, client-pool)
- *
- * Compile:
- *   gcc server.c -o server -pthread $(pkg-config --cflags --libs libmongoc-1.0)
- *
- * Notes:
- * - Expects persistent writer TCP connections to hold the writer lock.
- * - After inserting a message the server sends back an acknowledgement "OK: ..." or "ERROR: ...".
- */
 
  #define _POSIX_C_SOURCE 200809L
  #include <stdio.h>
@@ -26,12 +17,12 @@
  #define MAX_CLIENTS 64
  #define BUFFER_SIZE 4096
  
- /* Synchronization */
- static sem_t mutex; /* protects reader_count */
- static sem_t wrt;   /* writer lock */
+
+ static sem_t mutex; 
+ static sem_t wrt;   
  static int reader_count = 0;
  
- /* MongoDB pool */
+
  static mongoc_client_pool_t *mongo_pool = NULL;
  
  static volatile sig_atomic_t running = 1;
@@ -43,7 +34,7 @@
      while (n > 0 && (s[n-1] == '\n' || s[n-1] == '\r')) { s[n-1] = '\0'; n--; }
  }
  
- /* Insert using pool; return dynamically allocated result string (caller must free) */
+
  char *insert_message_to_db_pool(const char *message) {
      if (!mongo_pool) {
          char *res = strdup("ERROR: no DB pool\n");
@@ -82,7 +73,7 @@
      return strdup(okmsg);
  }
  
- /* Fetch using client pool (fills provided buffer) */
+
  void fetch_messages_from_db_pool(char *buffer, size_t buffer_size) {
      if (!mongo_pool) {
          strncpy(buffer, "No DB pool\n", buffer_size - 1);
@@ -130,7 +121,7 @@
      mongoc_client_pool_push(mongo_pool, client);
  }
  
- /* Client handler */
+
  void *handle_client(void *arg) {
      int sock = *(int *)arg;
      free(arg);
@@ -155,9 +146,7 @@
          char buf[BUFFER_SIZE];
          int n;
          int has_lock = 0;
- 
-         /* If the initial frame contained a payload after 'writer', handle it:
-            e.g., "writer\nstart" or "writerstart" etc. */
+
          char *p_after = NULL;
          if (strlen(initial) > 6) { p_after = initial + 6; while (*p_after==' '||*p_after=='\n'||*p_after=='\r') p_after++; if (*p_after) rtrim(p_after); }
  
@@ -168,10 +157,9 @@
                  send(sock, "OK: writer session started\n", 26, 0);
                  printf("[SERVER] Writer STARTED (sock=%d)\n", sock);
              } else if (strcmp(p_after, "stop") == 0) {
-                 // stop without lock => no-op
+ 
                  send(sock, "OK: writer session stopped\n", 26, 0);
              } else {
-                 // treat as message only if has_lock (it won't yet)
                  if (!has_lock) {
                      send(sock, "ERROR: start writing first\n", 27, 0);
                  } else {
@@ -182,7 +170,6 @@
              }
          }
  
-         /* Persist connection: receive controls and messages while conn open */
          while ((n = recv(sock, buf, sizeof(buf)-1, 0)) > 0) {
              buf[n] = '\0';
              rtrim(buf);
@@ -210,7 +197,6 @@
                      printf("[SERVER] Rejected write (sock=%d, no lock)\n", sock);
                      continue;
                  }
-                 /* insert and reply */
                  char *res = insert_message_to_db_pool(buf);
                  send(sock, res, strlen(res), 0);
                  free(res);
@@ -254,7 +240,6 @@
      }
  }
  
- /* Main */
  int main(void) {
      signal(SIGINT, handle_sigint);
      mongoc_init();
@@ -312,4 +297,5 @@
      printf("[SERVER] Shutdown complete.\n");
      return 0;
  }
+
  
